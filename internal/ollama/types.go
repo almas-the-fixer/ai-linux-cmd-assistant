@@ -14,13 +14,3 @@ type GenerateResponse struct {
 	Response  string    `json:"response"`
 	Done      bool      `json:"done"`
 }
-
-type Client	struct {
-	baseURL		string
-}
-
-func NewClient() *Client {
-	return &Client {
-		baseURL: "http://localhost:11434",
-	}
-}
