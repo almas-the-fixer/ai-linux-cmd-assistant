@@ -2,11 +2,7 @@ package ollama
 
 import (
 	"ai-linux-cmd-assistant/internal/intent"
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 )
 
@@ -34,44 +30,12 @@ func (c *Client) Generate(userPrompt string) (string, error) {
 		Stream: false,
 	}
 
-	requestBody, err := json.Marshal(request)
+	response, err := c.doRequest(&request)
 	if err != nil {
-		return "", fmt.Errorf("marshal request: %w", err)
+		return "", fmt.Errorf("error making request to Ollama: %w", err)
 	}
 
-	reader := bytes.NewReader(requestBody)
-
-	ollamaReq, err := http.NewRequest("POST", c.baseURL+"/api/generate", reader)
-	if err != nil {
-		return "", fmt.Errorf("error making request: %w", err)
-	}
-
-	ollamaReq.Header.Add("Content-Type", "application/json")
-
-	httpClient := &http.Client{}
-
-	resp, err := httpClient.Do(ollamaReq)
-	if err != nil {
-		return "", fmt.Errorf("error sending request: %w", err)
-	}
-	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("http error: %w", err)
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("error reading response: %w", err)
-	}
-
-	modelResponse := new(GenerateResponse)
-
-	err = json.Unmarshal(bodyBytes, modelResponse)
-	if err != nil {
-		return "", fmt.Errorf("error unmarshaling response: %w", err)
-	}
-
-	return modelResponse.Response, nil
+	return response.Response, nil
 }
 
 func (c *Client) IntentDetector(userPrompt string) (intent.Intent, error) {
@@ -81,46 +45,13 @@ func (c *Client) IntentDetector(userPrompt string) (intent.Intent, error) {
 		Stream: false,
 	}
 
-	requestBody, err := json.Marshal(request)
+	response, err := c.doRequest(&request)
 	if err != nil {
-		return intent.FailedToGetIntent, fmt.Errorf("marshal request: %w", err)
+		return intent.FailedToGetIntent, fmt.Errorf("error making request to Ollama: %w", err)
 	}
-
-	reader := bytes.NewReader(requestBody)
-
-	ollamaReq, err := http.NewRequest("POST", c.baseURL+"/api/generate", reader)
-	if err != nil {
-		return intent.FailedToGetIntent, fmt.Errorf("error making request: %w", err)
-	}
-
-	ollamaReq.Header.Add("Content-Type", "application/json")
-
-	httpClient := &http.Client{}
-
-	resp, err := httpClient.Do(ollamaReq)
-	if err != nil {
-		return intent.FailedToGetIntent, fmt.Errorf("error sending request: %w", err)
-	}
-	if resp.StatusCode != 200 {
-		return intent.FailedToGetIntent, fmt.Errorf("http error: %w", err)
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return intent.FailedToGetIntent, fmt.Errorf("error reading response: %w", err)
-	}
-
-	modelResponse := new(GenerateResponse)
-
-	err = json.Unmarshal(bodyBytes, modelResponse)
-	if err != nil {
-		return intent.FailedToGetIntent, fmt.Errorf("error unmarshaling response: %w", err)
-	}
-
-	label := strings.TrimSpace(modelResponse.Response)
-	
 	// For debugging
+	label := strings.TrimSpace(response.Response)
+
 	fmt.Println("User's Intent: ", label)
 	switch label {
 	case "HOW_TO":
