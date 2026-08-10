@@ -13,7 +13,7 @@ func main() {
 		fmt.Println("Error:", err)
 		return
 	}
-	
+
 	// Make Client
 	c := ollama.NewClient()
 	cli := cli.NewCLI(c)
