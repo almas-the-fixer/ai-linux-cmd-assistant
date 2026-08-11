@@ -14,26 +14,32 @@ type Document struct {
 }
 
 type Chunk struct {
-	Content   string
-	SourceDoc string
+	Content   string `bson:"content"`
+	SourceDoc string `bson:"source_doc"`
 }
 
-func LoadKnowledge() error {
+func LoadKnowledge() ([]Chunk, error) {
 	docs, err := loadMDFiles() // where to use docs??
 	if err != nil {
-		return fmt.Errorf("failed to load docs: %w", err)
+		return nil, fmt.Errorf("failed to load docs: %w", err)
 	}
 	fmt.Println("Loaded documents:", len(docs))
-
+	allChunks := []Chunk{}
 	for _, item := range docs {
 		chunks, err := SplitDocInChunks(item)
 		if err != nil {
-			return fmt.Errorf("failed to split document in chunks: %w", err)
+			return nil, fmt.Errorf("failed to split document in chunks: %w", err)
 		}
+		allChunks = append(allChunks, chunks...)
 		fmt.Println("Document:", item.Name)
 		fmt.Println("Chunks:", len(chunks))
 	}
-	return nil
+	return allChunks, nil
+}
+
+// For index/main.go
+func LoadDocuments() ([]Document, error) {
+	return loadMDFiles()
 }
 
 func loadMDFiles() ([]Document, error) {
