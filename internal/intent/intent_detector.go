@@ -11,6 +11,7 @@ const (
 	OffTopic
 	Malicious
 	FailedToGetIntent
+	GenerateCommand
 )
 
 func BuildIntentPrompt(userPrompt string) string {
@@ -24,6 +25,7 @@ func BuildIntentPrompt(userPrompt string) string {
 		- TROUBLESHOOT
 		- OFF_TOPIC
 		- MALICIOUS
+		- GENERATE_COMMAND
 
 		Classification Rules:
 
@@ -71,6 +73,13 @@ func BuildIntentPrompt(userPrompt string) string {
 		- Do NOT explain your reasoning.
 		- Do NOT use punctuation.
 		- Do NOT output anything except the label.
+
+		GENERATE_COMMAND:
+		- User wants a Linux/Bash command to accomplish something.
+		- Examples:
+		- "Give me the command to find all .log files."
+		- "What command can I use to see disk usage?"
+		- "Give me a command to kill a process."
 
 		User:
 		%s

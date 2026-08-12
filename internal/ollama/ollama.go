@@ -64,6 +64,8 @@ func (c *Client) IntentDetector(userPrompt string) (intent.Intent, error) {
 		return intent.OffTopic, nil
 	case "MALICIOUS":
 		return intent.Malicious, nil
+	case "GENERATE_COMMAND":
+		return intent.GenerateCommand, nil
 	default:
 		return intent.FailedToGetIntent, fmt.Errorf("unexpected intent label: %q", label)
 	}
