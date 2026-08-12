@@ -1,8 +1,11 @@
 package cli
 
 import (
+	"ai-linux-cmd-assistant/internal/command"
+	"ai-linux-cmd-assistant/internal/intent"
 	"ai-linux-cmd-assistant/internal/ollama"
 	"ai-linux-cmd-assistant/internal/prompt"
+	"ai-linux-cmd-assistant/internal/security"
 	"ai-linux-cmd-assistant/internal/ui"
 	"bufio"
 	"fmt"
@@ -52,8 +55,29 @@ func (cli *CLI) Run() {
 			fmt.Print("> ")
 			continue
 		}
-		ui.PrintResponse(resp)
-		fmt.Print("> ")
+
+		if userIntent == intent.GenerateCommand {
+			// Need to get user's intent before parsing and parse only when it is GENERATE COMMAND
+			cmd, err := command.ParseResponse(resp)
+			if err != nil {
+				ui.PrintError(err)
+				fmt.Print("> ")
+				continue
+			} else {
+				err := security.ValidateCommand(cmd.Command)
+				if err != nil {
+					ui.PrintError(err)
+					fmt.Print("> ")
+					continue
+				}
+				ui.PrintCommand(cmd.Command, cmd.Explanation)
+				fmt.Print("> ")
+			}
+		} else {
+			// Print General Responses .. i.e TROUBLESHOOT, HOW_TO etc
+			ui.PrintResponse(resp)
+			fmt.Print("> ")
+		}
 
 	}
 	err := scanner.Err()
