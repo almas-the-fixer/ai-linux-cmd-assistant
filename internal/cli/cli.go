@@ -2,6 +2,7 @@ package cli
 
 import (
 	"ai-linux-cmd-assistant/internal/command"
+	"ai-linux-cmd-assistant/internal/executor"
 	"ai-linux-cmd-assistant/internal/intent"
 	"ai-linux-cmd-assistant/internal/ollama"
 	"ai-linux-cmd-assistant/internal/prompt"
@@ -71,6 +72,21 @@ func (cli *CLI) Run() {
 					continue
 				}
 				ui.PrintCommand(cmd.Command, cmd.Explanation)
+				
+				// Confirm With user
+				choice := ui.ConfirmExecution(scanner)
+				if !choice {
+					ui.PrintPermissionDenied()
+					fmt.Print("> ")
+					continue
+				}
+				output, err := executor.ExecuteCommand(cmd.Command)
+				if err != nil {
+					ui.PrintError(err)
+					fmt.Print("> ")
+					continue
+				}
+				ui.PrintResponse(output)
 				fmt.Print("> ")
 			}
 		} else {
