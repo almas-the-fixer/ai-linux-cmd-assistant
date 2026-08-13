@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"bufio"
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -29,6 +31,10 @@ var (
 	errorStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("9"))
+
+	confirmStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("11"))
 )
 
 func PrintResponse(response string) {
@@ -54,4 +60,21 @@ func PrintCommand(command string, explanation string) {
 
 func PrintError(err error) {
 	fmt.Println(errorStyle.Render("Error: " + err.Error()))
+}
+
+func ConfirmExecution(scanner *bufio.Scanner) bool {
+    prompt := confirmStyle.Render("Execute this command? [y/N]: ")
+    fmt.Print(prompt)
+
+    if !scanner.Scan() {
+        return false
+    }
+
+    choice := strings.ToLower(strings.TrimSpace(scanner.Text()))
+
+    return choice == "y" || choice == "yes"
+}
+
+func PrintPermissionDenied() {
+    fmt.Println(errorStyle.Render("Command not executed."))
 }
