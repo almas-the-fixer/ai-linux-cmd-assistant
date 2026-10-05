@@ -38,6 +38,7 @@ func (c *Client) Generate(userPrompt string) (string, error) {
 	return response.Response, nil
 }
 
+// INTENT DETECTOR METHOD!!
 func (c *Client) IntentDetector(userPrompt string) (intent.Intent, error) {
 	request := GenerateRequest{
 		Model:  model,
