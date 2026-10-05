@@ -18,22 +18,29 @@ type Chunk struct {
 	SourceDoc string
 }
 
-func LoadKnowledge() error {
-	docs, err := loadMDFiles() // where to use docs??
+func LoadKnowledge() ([]Chunk, error) {
+	docs, err := loadMDFiles()
 	if err != nil {
-		return fmt.Errorf("failed to load docs: %w", err)
+		return nil, fmt.Errorf("failed to load docs: %w", err)
 	}
+
 	fmt.Println("Loaded documents:", len(docs))
+
+	var allChunks []Chunk
 
 	for _, item := range docs {
 		chunks, err := SplitDocInChunks(item)
 		if err != nil {
-			return fmt.Errorf("failed to split document in chunks: %w", err)
+			return nil, fmt.Errorf("failed to split document %s into chunks: %w", item.Name, err)
 		}
+
 		fmt.Println("Document:", item.Name)
 		fmt.Println("Chunks:", len(chunks))
+
+		allChunks = append(allChunks, chunks...)
 	}
-	return nil
+
+	return allChunks, nil
 }
 
 func loadMDFiles() ([]Document, error) {
