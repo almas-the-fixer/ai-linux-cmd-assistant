@@ -2,6 +2,7 @@ package prompt
 
 import (
 	"ai-linux-cmd-assistant/internal/intent"
+	"ai-linux-cmd-assistant/internal/knowledgebase"
 	"fmt"
 )
 
@@ -145,26 +146,64 @@ Assistant:
 `
 )
 
-func BuildPrompt(userInput string, userIntent intent.Intent) string {
+func BuildPrompt(
+	userInput string,
+	userIntent intent.Intent,
+	chunks []knowledgebase.Chunk,
+) string {
+	context := buildContext(chunks)
+
 	switch userIntent {
 	case intent.ExplainCommand:
-		return fmt.Sprintf(explainCommandPrompt, userInput)
+		return fmt.Sprintf(
+			explainCommandPrompt,
+			userInput,
+		) + "\n\nRetrieved Linux documentation:\n" + context
 
 	case intent.HowTo:
-		return fmt.Sprintf(howToPrompt, userInput)
+		return fmt.Sprintf(
+			howToPrompt,
+			userInput,
+		) + "\n\nRetrieved Linux documentation:\n" + context
 
 	case intent.Troubleshoot:
-		return fmt.Sprintf(troubleshootPrompt, userInput)
+		return fmt.Sprintf(
+			troubleshootPrompt,
+			userInput,
+		) + "\n\nRetrieved Linux documentation:\n" + context
+
+	case intent.GenerateCommand:
+		return fmt.Sprintf(
+			generateCommandPrompt,
+			userInput,
+		) + "\n\nRetrieved Linux documentation:\n" + context
 
 	case intent.OffTopic:
 		return fmt.Sprintf(offTopicPrompt, userInput)
 
 	case intent.Malicious:
 		return fmt.Sprintf(maliciousPrompt, userInput)
-	case intent.GenerateCommand:
-		return fmt.Sprintf(generateCommandPrompt, userInput)
 
 	default:
 		return fmt.Sprintf(unknownPrompt, userInput)
 	}
+}
+
+func buildContext(chunks []knowledgebase.Chunk) string {
+	if len(chunks) == 0 {
+		return "No relevant Linux documentation was retrieved."
+	}
+
+	var context string
+
+	for i, chunk := range chunks {
+		context += fmt.Sprintf(
+			"\n--- Document %d (%s) ---\n%s\n",
+			i+1,
+			chunk.SourceDoc,
+			chunk.Content,
+		)
+	}
+
+	return context
 }
