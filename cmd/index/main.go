@@ -30,6 +30,17 @@ func main() {
 		return
 	}
 
+	indexed, err := weaviate.KnowledgeIndexed(client)
+	if err != nil {
+		fmt.Println("Error checking index:", err)
+		return
+	}
+
+	if indexed {
+		fmt.Println("Knowledge base already indexed. Nothing to do.")
+		return
+	}
+
 	// Load and split all Markdown documents into chunks.
 	chunks, err := knowledgebase.LoadKnowledge()
 	if err != nil {
@@ -40,6 +51,12 @@ func main() {
 	fmt.Println("Total chunks:", len(chunks))
 
 	// R3: insert chunks into Weaviate will go here.
+	err = weaviate.InsertChunks(client, chunks)
+	if err != nil {
+		fmt.Println("Error inserting chunks:", err)
+		return
+	}
 
+	fmt.Printf("Inserted %d chunks into Weaviate\n", len(chunks))
 	fmt.Println("Indexer finished.")
 }
