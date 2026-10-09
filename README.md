@@ -1,412 +1,290 @@
 # AI Linux Command Assistant
 
-A terminal-based Linux assistant powered by a **local Large Language Model (LLM)**. The application understands Linux-related requests, identifies the user's intent, generates Linux/Bash commands when appropriate, validates generated commands against a safety layer, and requires explicit user confirmation before executing commands.
+A terminal-based Linux assistant built in Go. It uses a local **Qwen2.5:3B** model through **Ollama** for intent detection and response generation, and retrieval-augmented generation (RAG) to ground Linux answers in a small Markdown knowledge base.
 
-The project is designed as a practical demonstration of **Generative AI + backend engineering + Linux command execution** without relying on cloud AI APIs.
+For semantic retrieval, the application creates embeddings remotely with the **Jina Embeddings API** and stores/searches those vectors in **Weaviate Cloud**. Qwen inference remains local; embedding requests and the corresponding text sent to Jina use an external API.
 
 ## Features
 
-* Local LLM inference using Ollama
-* Qwen2.5 3B as the language model
-* Linux/Bash-focused conversational assistant
-* Intent classification
-* Linux command generation
-* Command explanation
-* Command parsing
-* Basic command safety validation
-* Explicit `y/N` confirmation before execution
-* Actual Linux command execution
-* Command output displayed in the terminal
-* Colored and bordered terminal UI
-* Handles general Linux questions, how-to questions, and troubleshooting
+- Local LLM inference with Ollama and Qwen2.5:3B
+- Intent classification for Linux-related requests
+- Linux command explanations, how-to guidance, and troubleshooting
+- Linux/Bash command generation with a structured response format
+- Markdown knowledge base split into chunks for retrieval
+- Jina text embeddings for knowledge chunks and user queries
+- Weaviate vector storage and semantic search
+- Retrieved documentation included in prompts sent to Qwen
+- Basic application-level command validation
+- Explicit confirmation before attempting to execute generated commands
+- Colored, bordered terminal output
+
+> **Security notice:** The command validator is a basic denylist, not a security sandbox. It cannot guarantee that generated commands are safe. Review every command before approving it, and do not run this project with elevated privileges or against important data unless you understand the risks.
 
 ## Architecture
 
-```text
-User
- │
- ▼
-CLI
- │
- ▼
-Intent Detector
- │
- ├── EXPLAIN_COMMAND
- ├── HOW_TO
- ├── TROUBLESHOOT
- ├── GENERATE_COMMAND
- ├── OFF_TOPIC
- └── MALICIOUS
- │
- ▼
-Prompt Builder
- │
- ▼
-Ollama
- │
- ▼
-Qwen2.5:3b
- │
- ▼
-Response
- │
- ├── General Response ──────────────► UI
- │
- └── Generated Command
-          │
-          ▼
-     Response Parser
-          │
-          ▼
-     Security Validator
-          │
-          ▼
-     User Confirmation
-          │
-       ┌──┴──┐
-       │     │
-      NO    YES
-       │     │
-       ▼     ▼
-     Stop   Executor
-               │
-               ▼
-          Command Output
-```
-
-## How It Works
-
-### 1. User Input
-
-The user enters a Linux-related request through the terminal.
-
-Example:
+### Answering a Linux question
 
 ```text
-> give me a command to find all .log files
+User query
+   |
+   v
+Local Qwen intent detection (Ollama)
+   |
+   +---- OFF_TOPIC / MALICIOUS / unknown --> response path without retrieval
+   |
+   v
+Jina: embed query (retrieval.query)
+   |
+   v
+Weaviate: near-vector search
+   |
+   v
+Top relevant knowledge chunks
+   |
+   v
+Prompt builder adds retrieved context
+   |
+   v
+Local Qwen2.5:3B generates the answer
+   |
+   v
+Terminal UI
 ```
 
-### 2. Intent Detection
-
-The application sends the user's request to the local LLM and classifies it into one of the supported intents.
-
-Examples:
+### Indexing the knowledge base
 
 ```text
-EXPLAIN_COMMAND
-HOW_TO
-TROUBLESHOOT
-GENERATE_COMMAND
-OFF_TOPIC
-MALICIOUS
+Markdown files
+   |
+   v
+Load and split into chunks
+   |
+   v
+Jina: embed each chunk (retrieval.passage)
+   |
+   v
+Store text, source filename, and vector in Weaviate
 ```
 
-### 3. Response Generation
+The collection uses **bring-your-own vectors**: Jina generates the vectors, and Weaviate stores and searches them. The application uses 768-dimensional vectors with the `jina-embeddings-v5-text-nano` model.
 
-The detected intent is used to construct an appropriate prompt.
-
-For command-generation requests, the model is instructed to return a structured response:
+### Generated-command path
 
 ```text
-COMMAND: find . -type f -name "*.log"
-EXPLANATION: Searches the current directory recursively for files ending in .log.
+User request
+   |
+   v
+Intent detection --> GENERATE_COMMAND
+   |
+   v
+Retrieval + prompt construction
+   |
+   v
+Qwen generates COMMAND and EXPLANATION fields
+   |
+   v
+Go parser --> basic safety validator
+   |
+   v
+Display command and request explicit confirmation
+   |
+   v
+Executor --> display command output
 ```
 
-### 4. Command Parsing
+The model's prompt instructions are not treated as a security boundary. The application validator is only a basic additional check.
 
-The generated response is parsed into a Go structure:
+## Technology stack
 
-```go
-type Command struct {
-    Command     string
-    Explanation string
-}
-```
-
-This separates the executable command from its explanation.
-
-### 5. Security Validation
-
-Before execution, the generated command passes through a deterministic validation layer.
-
-The validator checks for potentially dangerous patterns such as:
-
-* Destructive filesystem operations
-* Disk formatting
-* Filesystem wiping
-* Dangerous block-device operations
-* Fork bombs
-* Security-disabling commands
-* Remote code piped directly into a shell
-
-The LLM's safety instructions are **not treated as the security boundary**. The Go validator provides an additional application-level safety check.
-
-### 6. User Confirmation
-
-Even if the command passes validation, the application does not execute it automatically.
-
-The user must explicitly approve it:
-
-```text
-Execute this command? [y/N]:
-```
-
-Only `y` or `yes` results in execution.
-
-Anything else is treated as rejection.
-
-### 7. Command Execution
-
-Approved commands are executed using Go's `os/exec` package.
-
-The application uses:
-
-```go
-exec.Command(binary, args...)
-```
-
-rather than passing the generated command to a shell using `sh -c`.
-
-The command's combined standard output and error output are captured and displayed to the user.
-
-## Technology Stack
-
-| Technology | Purpose                            |
-| ---------- | ---------------------------------- |
-| Go         | Application/backend implementation |
-| Ollama     | Local LLM inference                |
-| Qwen2.5 3B | Local language model               |
-| bufio      | Terminal input handling            |
-| os/exec    | Linux command execution            |
-| Lipgloss   | Terminal UI styling                |
-| Git        | Version control                    |
-
-## Project Structure
-
-```text
-ai-linux-cmd-assistant/
-│
-├── cmd/
-│   └── main.go
-│
-├── internal/
-│   ├── cli/
-│   │   └── cli.go
-│   │
-│   ├── command/
-│   │   └── command.go
-│   │
-│   ├── executor/
-│   │   └── executor.go
-│   │
-│   ├── intent/
-│   │   └── intent.go
-│   │
-│   ├── ollama/
-│   │   ├── ollama.go
-│   │   └── types.go
-│   │
-│   ├── prompt/
-│   │   └── prompt.go
-│   │
-│   ├── security/
-│   │   └── security.go
-│   │
-│   └── ui/
-│       └── ui.go
-│
-├── go.mod
-├── go.sum
-└── README.md
-```
-
-> Note: The Project still contains knowledge/ and knowledgebase/
-> These were meant to add RAG in future versions so these are dormant for now...
+| Technology | Purpose |
+|---|---|
+| Go | CLI and application logic |
+| Ollama | Local LLM runtime |
+| Qwen2.5:3B | Intent detection and response generation |
+| Jina Embeddings API | Remote text embeddings for documents and queries |
+| Weaviate Cloud | Vector storage and semantic retrieval |
+| Lip Gloss | Terminal styling |
+| Go `os/exec` | Command execution |
+| Go `net/http` / JSON | API requests and responses |
 
 ## Requirements
 
-* Linux
-* Go
-* Ollama
-* Qwen2.5 3B model
+- Linux
+- Go installed
+- Ollama installed and running
+- Qwen2.5:3B available in Ollama
+- A Jina API key
+- A Weaviate Cloud cluster and API key
+- Internet access for Jina embeddings and Weaviate Cloud
 
-Install Ollama and pull the model:
+Pull the model:
 
 ```bash
 ollama pull qwen2.5:3b
 ```
 
-Start Ollama if it is not already running:
+If Ollama is not already running as a service, start it in a separate terminal:
 
 ```bash
 ollama serve
 ```
 
-## Running the Application
+## Configuration
 
-Clone the repository and enter the project directory:
+Create a `.env` file in the repository root. Do not commit this file or share its credentials.
+
+```dotenv
+JINA_API_KEY=your_jina_api_key
+WEAVIATE_HOST=your-cluster-hostname
+WEAVIATE_API_KEY=your_weaviate_api_key
+```
+
+Use the **bare Weaviate hostname** for `WEAVIATE_HOST`; do not include `https://`. The application uses HTTPS separately.
+
+Keep `.env` out of version control. If a real API key is accidentally committed, revoke it and create a replacement.
+
+## Setup and run
+
+Clone the repository and enter it:
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/almas-the-fixer/ai-linux-cmd-assistant.git
 cd ai-linux-cmd-assistant
 ```
 
-Install dependencies:
+Download Go dependencies:
 
 ```bash
 go mod download
 ```
 
-Run the application:
+### 1. Index the knowledge base
+
+Run this after configuring `.env`:
+
+```bash
+go run cmd/index/main.go
+```
+
+The indexer loads the Markdown files, creates chunks, obtains a Jina embedding for each chunk, and inserts the objects into the `LinuxKnowledge` collection in Weaviate.
+
+The current knowledge base contains eight Markdown files and approximately 174 chunks. The indexer checks whether the collection already contains objects to avoid importing the same set repeatedly. This is a simple one-time indexing guard, not an incremental update system.
+
+**If you edit the knowledge files and need to rebuild the index**, delete the `LinuxKnowledge` collection in Weaviate Cloud and run the indexer again. This removes the existing indexed objects, so do it only when you intend to rebuild the knowledge base.
+
+### 2. Run the assistant
 
 ```bash
 go run cmd/main.go
 ```
 
-The application starts with:
+The normal application connects to Ollama and Weaviate at startup. Ensure the `.env` variables are present and both services are reachable.
+
+### Optional: test retrieval
+
+The repository may include a small search diagnostic under `cmd/search`:
+
+```bash
+go run cmd/search/main.go
+```
+
+This is a development/testing utility, not required for normal use. It may use a hard-coded sample query.
+
+## Knowledge base
+
+The current Markdown knowledge base covers topics such as:
+
+- Archives
+- File management
+- File search
+- Networking
+- Package management
+- Permissions and ownership
+- Process management
+- Text processing
+
+The indexer splits the documents into chunks and stores each chunk's content, source filename, and Jina-generated vector in Weaviate.
+
+## Example interaction
 
 ```text
 AI Linux Assistant
 Type 'exit' to quit.
 
->
-```
-
-## Example
-
-```text
-> can you give me a command to list all hidden files?
-
-User's Intent: GENERATE_COMMAND
-
-Command
-╭──────────────────────────────╮
-│ ls -a                        │
-╰──────────────────────────────╯
-
-Explanation
-╭──────────────────────────────╮
-│ Lists all files including    │
-│ hidden files and directories.│
-╰──────────────────────────────╯
-
-Execute this command? [y/N]: yes
+> what does chmod do?
+User's Intent: EXPLAIN_COMMAND
 
 Answer
-╭──────────────────────────────╮
-│ .                            │
-│ ..                           │
-│ .git                         │
-│ README.md                    │
-│ ...                          │
-╰──────────────────────────────╯
+...a concise explanation grounded in retrieved Linux documentation...
+
+> what does pgrep do?
+User's Intent: EXPLAIN_COMMAND
+
+Answer
+...an explanation using relevant process-management documentation...
 ```
 
-## Security Model
-
-The project uses multiple layers of protection:
+For command-generation requests, the model is asked to return a structure like:
 
 ```text
-LLM Safety Instructions
-        ↓
-Generated Command
-        ↓
-Go Command Parser
-        ↓
-Deterministic Denylist
-        ↓
-Explicit User Confirmation
-        ↓
-os/exec
+COMMAND: find . -type f -name "*.log"
+EXPLANATION: Finds files ending in .log under the current directory.
 ```
 
-The application does **not** consider the LLM's safety instructions sufficient by themselves.
+The application parses the response, validates the extracted command, displays it, and asks for explicit confirmation before execution. The generated command may still be wrong or unsafe, so inspect it carefully.
 
-The generated command is checked by application code before it can reach the executor.
+## Safety and limitations
 
-### Important Limitation
+- The validator uses a limited denylist and is not a comprehensive shell-security mechanism.
+- A command passing validation does not mean it is safe.
+- The command parser is intentionally simple and may not support all shell quoting, substitutions, pipelines, or compound-command syntax correctly.
+- Never approve a command you do not understand.
+- Do not run the application as root or with `sudo`.
+- Qwen2.5:3B may misclassify requests, produce incorrect answers, or fail to follow the requested output format.
+- Retrieval can return related but imperfect chunks; answers are not guaranteed to be correct just because context was retrieved.
+- If the knowledge base does not cover a topic, retrieval may not provide useful evidence.
+- Intent detection and response generation are separate local model calls; the application does not currently provide full conversational memory.
+- Query text and knowledge chunks are sent to the Jina Embeddings API to create vectors. Do not send secrets or private documents through this embedding path.
+- Weaviate Cloud and Jina API availability, quotas, and terms are controlled by their providers and may change.
 
-The validator is a **simple denylist**, not a complete security sandbox.
-
-Linux commands and shell environments are extremely powerful, and there are many ways to express similar operations. Therefore, this project should not be treated as a production-grade secure command execution environment.
-
-The user confirmation step is intentionally retained as an additional safety layer.
-
-## Design Decisions
-
-### Why a Local Model?
-
-The project uses Ollama and Qwen2.5 3B so that inference can happen locally without sending user queries to an external AI API.
-
-This also makes the project suitable for experimentation without requiring an API key.
-
-### Why Intent Detection?
-
-Intent detection separates different types of requests before generating the final response.
-
-For example:
+## Project structure
 
 ```text
-"What does grep do?"
-        ↓
-EXPLAIN_COMMAND
+ai-linux-cmd-assistant/
+├── cmd/
+│   ├── main.go          # Run the assistant
+│   ├── index/main.go    # Build the vector knowledge index
+│   └── search/main.go   # Optional retrieval diagnostic
+├── internal/
+│   ├── cli/             # Input loop and application flow
+│   ├── command/         # Parse structured command responses
+│   ├── embedding/       # Jina embedding API client
+│   ├── executor/        # Execute approved commands
+│   ├── intent/          # Intent classification
+│   ├── knowledge/       # Source Markdown files
+│   ├── knowledgebase/   # Load documents and create chunks
+│   ├── ollama/          # Local Ollama client
+│   ├── prompt/          # Intent-specific prompts and RAG context
+│   ├── security/        # Basic command validation
+│   ├── ui/              # Colored terminal presentation
+│   └── weaviate/        # Connection, collection, indexing and search
+├── .env                 # Local secrets; do not commit
+├── go.mod
+├── go.sum
+└── README.md
 ```
 
-while:
+## Future improvements
 
-```text
-"give me a command to find large files"
-        ↓
-GENERATE_COMMAND
-```
+- Automated tests for parsing, retrieval, and validation
+- Incremental re-indexing when Markdown files change
+- Better chunk boundaries and retrieval relevance filtering
+- Stronger command validation and isolated/sandboxed execution
+- More robust shell-argument parsing
+- More visible retrieval diagnostics and source citations
+- Improved conversation context handling
+- Streaming responses and richer terminal UX
 
-This allows different prompt instructions to be used for different tasks.
+## Goal
 
-### Why Explicit Confirmation?
-
-The model can generate commands, but the application should not blindly execute AI-generated instructions.
-
-Therefore:
-
-```text
-Generated ≠ Executed
-```
-
-The user must explicitly authorize execution.
-
-## Limitations
-
-* The application currently targets Linux environments.
-* The LLM can occasionally misunderstand user requests.
-* Intent classification can be incorrect.
-* Generated commands may not always be technically optimal.
-* The command safety layer uses a denylist and cannot guarantee complete protection.
-* Command execution requires careful user judgment.
-* The application currently has limited conversation/context memory.
-* The local model's capabilities are constrained by the relatively small 3B parameter size.
-
-## Future Improvements
-
-Potential future improvements include:
-
-* Better command validation
-* More robust command parsing
-* Improved conversational context
-* Streaming model responses
-* Better terminal syntax highlighting
-* Command history
-* Configuration options
-* More detailed execution feedback
-* Sandboxed command execution
-* Automated tests
-* Support for additional local models
-
-## Project Goal
-
-The primary goal of this project is to demonstrate how a **local Generative AI model can be integrated with a traditional Go application** to create a practical Linux assistant.
-
-Rather than allowing the AI model to directly control the system, the application places deterministic application logic and explicit user authorization between the model and command execution.
-
-This makes the project a combination of:
-
-**Generative AI + Go + Linux + CLI development + basic AI safety engineering.**
+This project demonstrates how a locally hosted Generative AI model can be combined with Go application logic, remote embeddings, vector search, and user-controlled command execution to build a practical Linux assistant. The LLM generates suggestions; deterministic application code and explicit user confirmation remain between generated commands and execution.
